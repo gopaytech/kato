@@ -12,7 +12,7 @@ import (
 
 type fakeCompleter struct{ out string }
 
-func (f fakeCompleter) Complete(ctx context.Context, system, user string) (string, error) {
+func (f fakeCompleter) Complete(ctx context.Context, system, user string, jsonMode bool) (string, error) {
 	if f.out != "" {
 		return f.out, nil
 	}
@@ -193,7 +193,76 @@ func TestSummarizeAppendsVerdictInstruction(t *testing.T) {
 
 type systemCapturingCompleter struct{ capture *string }
 
-func (c systemCapturingCompleter) Complete(ctx context.Context, system, user string) (string, error) {
+func (c systemCapturingCompleter) Complete(ctx context.Context, system, user string, jsonMode bool) (string, error) {
 	*c.capture = system
 	return "VERDICT: healthy — ok\n\nfine", nil
+}
+
+func TestSummarize_JSONMode(t *testing.T) {
+	uc := &v1alpha1.UseCase{Spec: v1alpha1.UseCaseSpec{Summary: v1alpha1.SummarySpec{Prompt: "x"}}}
+
+	// valid json -> Format json, healthy parsed
+	valid := `{"verdict":"unhealthy","headline":"bad","blocks":[{"type":"paragraph","text":"x"}]}`
+	s := &Summarizer{
+		Format: "json",
+		Resolve: func(*v1alpha1.UseCase) (Completer, string, error) {
+			return fakeCompleter{out: valid}, "gpt-test", nil
+		},
+	}
+	out, err := s.Summarize(context.Background(), uc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Format != "json" || out.Healthy == nil || *out.Healthy != false || out.Warning != "" {
+		t.Errorf("valid json: got %+v", out)
+	}
+
+	// invalid json -> downgrade to markdown + warning
+	s2 := &Summarizer{
+		Format: "json",
+		Resolve: func(*v1alpha1.UseCase) (Completer, string, error) {
+			return fakeCompleter{out: "oops not json"}, "gpt-test", nil
+		},
+	}
+	out2, err := s2.Summarize(context.Background(), uc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out2.Format != "markdown" || out2.Warning == "" || out2.Summary != "oops not json" {
+		t.Errorf("downgrade: got %+v", out2)
+	}
+}
+
+// TestSummarize_JSONMode_DowngradeIgnoresVerdictLine covers the defect where the
+// downgrade path relied on parseVerdict(out), which strips a "VERDICT: ..." line
+// and sets Healthy/Headline from it. When json mode is requested but the model
+// replies in old markdown style, the downgrade contract requires the RAW model
+// output verbatim as Summary, with Healthy=nil and Headline="" — independent of
+// whatever parseVerdict would have extracted from that text.
+func TestSummarize_JSONMode_DowngradeIgnoresVerdictLine(t *testing.T) {
+	uc := &v1alpha1.UseCase{Spec: v1alpha1.UseCaseSpec{Summary: v1alpha1.SummarySpec{Prompt: "x"}}}
+
+	raw := "VERDICT: healthy — looks fine\n\nEverything's fine."
+	s := &Summarizer{
+		Format: "json",
+		Resolve: func(*v1alpha1.UseCase) (Completer, string, error) {
+			return fakeCompleter{out: raw}, "gpt-test", nil
+		},
+	}
+	out, err := s.Summarize(context.Background(), uc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Format != "markdown" {
+		t.Errorf("Format = %q, want markdown", out.Format)
+	}
+	if out.Healthy != nil {
+		t.Errorf("Healthy = %v, want nil (must not be parsed from the raw text)", *out.Healthy)
+	}
+	if out.Summary != raw {
+		t.Errorf("Summary = %q, want raw model output %q", out.Summary, raw)
+	}
+	if out.Warning == "" {
+		t.Error("Warning should be set on downgrade")
+	}
 }

@@ -169,6 +169,7 @@ helm install my-kato kato/kato --values values.yaml
 | config.runReconcileConcurrency | int | `2` |  |
 | config.runTTL | string | `"168h"` |  |
 | config.stepTimeout | string | `"30s"` |  |
+| config.summaryFormat | string | `"markdown"` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"ghcr.io/gopaytech/kato"` |  |
 | image.tag | string | `"0.8.0"` |  |

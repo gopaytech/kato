@@ -26,6 +26,12 @@ config:
   # sweep. This force-fails ANY run exceeding it (a healthy long run as well as a
   # crash), so keep it comfortably above your longest expected run.
   runMaxDuration: 1h
+  # LLM summary output format: "markdown" (default) or "json". In json mode kato
+  # instructs the model to emit a structured block document and validates it,
+  # downgrading to markdown when the reply is not valid json. Consumers read the
+  # Run's status.summaryFormat (also on the sync run response) to know how to
+  # render the summary; unrecognized values fall back to markdown.
+  summaryFormat: markdown
 
 # Extra labels/annotations on the POD template only (not the Deployment or the
 # other chart objects). This is where sidecar-injection selectors go, since the

@@ -46,13 +46,14 @@ type StepResult struct {
 }
 
 type Result struct {
-	Phase       string
-	Steps       []StepResult
-	Summary     string
-	Healthy     *bool  // health verdict; nil = unknown. Advisory, never affects Phase.
-	Headline    string // one-line reason accompanying Healthy; empty when unknown.
-	Warning     string // set when summary could not be produced
-	ModelConfig string
+	Phase         string
+	Steps         []StepResult
+	Summary       string
+	Healthy       *bool  // health verdict; nil = unknown. Advisory, never affects Phase.
+	Headline      string // one-line reason accompanying Healthy; empty when unknown.
+	Warning       string // set when summary could not be produced
+	ModelConfig   string
+	SummaryFormat string // "markdown" or "json"; how Summary should be read
 }
 
 // SummaryOutput is what a summarizer returns: the prose plus the structured
@@ -62,6 +63,11 @@ type SummaryOutput struct {
 	Healthy     *bool
 	Headline    string
 	ModelConfig string
+	// Format is "markdown" or "json" — how Summary should be interpreted.
+	Format string
+	// Warning, if non-empty, records a non-fatal summary issue (e.g. a json
+	// downgrade). It does not prevent the summary from being stored.
+	Warning string
 }
 
 // SummarizeFn produces a SummaryOutput from completed step results. The
@@ -108,6 +114,10 @@ func (e *Engine) Execute(ctx context.Context, uc *v1alpha1.UseCase, inputs map[s
 	res.Healthy = out.Healthy
 	res.Headline = out.Headline
 	res.ModelConfig = out.ModelConfig
+	res.SummaryFormat = out.Format
+	if out.Warning != "" {
+		res.Warning = out.Warning
+	}
 	return res, nil
 }
 

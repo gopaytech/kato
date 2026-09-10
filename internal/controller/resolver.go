@@ -51,8 +51,8 @@ type summarizerClient struct {
 	client *summarizer.OpenAIClient
 }
 
-func (s *summarizerClient) Complete(ctx context.Context, system, user string) (string, error) {
-	return s.client.Complete(ctx, system, user)
+func (s *summarizerClient) Complete(ctx context.Context, system, user string, jsonMode bool) (string, error) {
+	return s.client.Complete(ctx, system, user, jsonMode)
 }
 
 // Resolve implements summarizer's resolution rules (spec §4): explicit ref,

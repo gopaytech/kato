@@ -45,11 +45,16 @@ type chatMessage struct {
 	Content string `json:"content"`
 }
 
+type responseFormat struct {
+	Type string `json:"type"`
+}
+
 type chatRequest struct {
-	Model       string        `json:"model"`
-	Messages    []chatMessage `json:"messages"`
-	MaxTokens   int           `json:"max_tokens,omitempty"`
-	Temperature float64       `json:"temperature"`
+	Model          string          `json:"model"`
+	Messages       []chatMessage   `json:"messages"`
+	MaxTokens      int             `json:"max_tokens,omitempty"`
+	Temperature    float64         `json:"temperature"`
+	ResponseFormat *responseFormat `json:"response_format,omitempty"`
 }
 
 type chatResponse struct {
@@ -58,7 +63,7 @@ type chatResponse struct {
 	} `json:"choices"`
 }
 
-func (c *OpenAIClient) Complete(ctx context.Context, system, user string) (string, error) {
+func (c *OpenAIClient) Complete(ctx context.Context, system, user string, jsonMode bool) (string, error) {
 	reqBody := chatRequest{
 		Model:       c.Model,
 		MaxTokens:   c.MaxTokens,
@@ -67,6 +72,9 @@ func (c *OpenAIClient) Complete(ctx context.Context, system, user string) (strin
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
 		},
+	}
+	if jsonMode {
+		reqBody.ResponseFormat = &responseFormat{Type: "json_object"}
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {

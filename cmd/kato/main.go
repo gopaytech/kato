@@ -112,6 +112,7 @@ func run() error {
 		MaxEvidenceBytes: cfg.MaxEvidenceBytes,
 		Log:              func(msg string, kv ...any) { log.Info(msg, kv...) },
 		DebugLog:         func(msg string, kv ...any) { log.V(1).Info(msg, kv...) },
+		Format:           cfg.SummaryFormat,
 	}
 	deps := methods.Deps{Kube: kubeClient, Metrics: metricsClient, Prober: methods.LocalProber{}, Namespace: cfg.Namespace}
 	eng := &engine.Engine{

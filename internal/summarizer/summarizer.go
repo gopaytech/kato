@@ -15,9 +15,10 @@ import (
 
 const systemPrompt = `You are a Kubernetes troubleshooting assistant. You are given evidence collected by a deterministic set of checks. Diagnose the problem based ONLY on this evidence. Cite the specific step evidence that supports each claim. If the evidence is insufficient, say the diagnosis is inconclusive rather than guessing. Do not invent data that is not present.`
 
-// Completer is the minimal LLM capability the summarizer needs.
+// Completer is the minimal LLM capability the summarizer needs. jsonMode asks
+// an OpenAI-compatible endpoint for a JSON object response where supported.
 type Completer interface {
-	Complete(ctx context.Context, system, user string) (string, error)
+	Complete(ctx context.Context, system, user string, jsonMode bool) (string, error)
 }
 
 // BuildEvidence renders the user message: per step, its outcome and the
@@ -107,6 +108,9 @@ type Summarizer struct {
 	// debug-verbosity logger (wired to log.V(1) in cmd/kato), so it is off in
 	// production; nil disables it.
 	DebugLog func(msg string, keysAndValues ...any)
+	// Format selects the summary output format: "markdown" (default) or "json".
+	// Empty is treated as "markdown".
+	Format string
 }
 
 func (s *Summarizer) Summarize(ctx context.Context, uc *v1alpha1.UseCase, steps []engine.StepResult) (engine.SummaryOutput, error) {
@@ -122,7 +126,11 @@ func (s *Summarizer) Summarize(ctx context.Context, uc *v1alpha1.UseCase, steps 
 		truncated = true
 	}
 	user := "Use case: " + uc.Spec.Summary.Prompt + "\n\nEvidence:\n" + evidence
-	system := systemPrompt + "\n\n" + verdictInstruction
+	instruction := verdictInstruction
+	if s.Format == "json" {
+		instruction = jsonInstruction
+	}
+	system := systemPrompt + "\n\n" + instruction
 	if s.Log != nil {
 		s.Log("summarizing", "useCase", uc.Name, "model", model,
 			"evidenceBytes", fullBytes, "promptBytes", len(user), "truncated", truncated)
@@ -134,15 +142,31 @@ func (s *Summarizer) Summarize(ctx context.Context, uc *v1alpha1.UseCase, steps 
 		}, "", "  ")
 		s.DebugLog("llm request", "useCase", uc.Name, "model", model, "messages", string(messages))
 	}
-	out, err := completer.Complete(ctx, system, user)
+	out, err := completer.Complete(ctx, system, user, s.Format == "json")
 	if err != nil {
 		return engine.SummaryOutput{}, err
 	}
-	summary, healthy, headline := parseVerdict(out)
+	format := "markdown"
+	var summary string
+	var healthy *bool
+	var headline string
+	warning := ""
+	if s.Format == "json" {
+		if clean, h, hl, ok := parseJSONSummary(out); ok {
+			format, summary, healthy, headline = "json", clean, h, hl
+		} else {
+			warning = "requested json summary but model returned invalid json; served as markdown"
+			summary, healthy, headline = out, nil, ""
+		}
+	} else {
+		summary, healthy, headline = parseVerdict(out)
+	}
 	return engine.SummaryOutput{
 		Summary:     summary,
 		Healthy:     healthy,
 		Headline:    headline,
 		ModelConfig: model,
+		Format:      format,
+		Warning:     warning,
 	}, nil
 }

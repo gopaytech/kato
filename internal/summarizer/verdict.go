@@ -16,7 +16,8 @@ Use "healthy" only if the evidence shows the subject is working, "unhealthy" if 
 
 VERDICT: unhealthy — CrashLoopBackOff, image tag :v2 not found
 
-The deployment has 0/3 ready replicas because ...`
+The deployment has 0/3 ready replicas because ...
+Format your analysis as GitHub-flavored Markdown (headings, bullet lists, and fenced code blocks only).`
 
 // verdictLineRE matches the verdict on a single line: the keyword, then an
 // optional dash/colon separator, then the rest of the line as the headline.
@@ -44,15 +45,21 @@ func parseVerdict(raw string) (summary string, healthy *bool, headline string) {
 		f := false
 		healthy = &f
 	}
-	headline = strings.TrimSpace(m[2])
-	if utf8.RuneCountInString(headline) > headlineMaxRunes {
-		r := []rune(headline)
-		// Reserve one rune for the ellipsis so the result is at most 120 runes.
-		headline = strings.TrimSpace(string(r[:headlineMaxRunes-1])) + "…"
-	}
+	headline = truncateHeadline(m[2])
 	rest := ""
 	if len(parts) > 1 {
 		rest = parts[1]
 	}
 	return strings.TrimLeft(rest, "\r\n"), healthy, headline
+}
+
+// truncateHeadline caps a headline at headlineMaxRunes, appending an ellipsis.
+func truncateHeadline(s string) string {
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) <= headlineMaxRunes {
+		return s
+	}
+	r := []rune(s)
+	// Reserve one rune for the ellipsis so the result is at most 120 runes.
+	return strings.TrimSpace(string(r[:headlineMaxRunes-1])) + "…"
 }

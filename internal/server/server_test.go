@@ -147,6 +147,43 @@ func TestRunUseCaseResponseIncludesVerdict(t *testing.T) {
 	}
 }
 
+func TestRunUseCaseResponseIncludesSummaryFormat(t *testing.T) {
+	uc := sampleUseCase()
+	src := &fakeUseCases{
+		items: map[string]*v1alpha1.UseCase{uc.Name: uc},
+		ready: map[string]bool{uc.Name: true},
+	}
+	exec := func(ctx context.Context, u *v1alpha1.UseCase, inputs map[string]string) (engine.Result, error) {
+		return engine.Result{Phase: engine.PhaseSucceeded, Summary: "{...}", SummaryFormat: "json"}, nil
+	}
+	s := &Server{
+		UseCases: src, Runs: &fakeRuns{}, Execute: exec,
+		Registry: methods.Builtin(), MaxConcurrent: 10, Clock: func() time.Time { return time.Unix(0, 0) },
+	}
+
+	body := strings.NewReader(`{"inputs":{"namespace":"payments"}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/usecases/pod-crashloop/run", body)
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Summary       string `json:"summary"`
+		SummaryFormat string `json:"summaryFormat"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.SummaryFormat != "json" {
+		t.Errorf("summaryFormat = %q, want json", resp.SummaryFormat)
+	}
+	if resp.Summary != "{...}" {
+		t.Errorf("summary = %q, want {...}", resp.Summary)
+	}
+}
+
 func TestRunEndpointErrors(t *testing.T) {
 	cases := []struct {
 		name       string

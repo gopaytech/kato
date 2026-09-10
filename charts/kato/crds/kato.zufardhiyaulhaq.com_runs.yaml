@@ -147,6 +147,15 @@ spec:
                 type: array
               summary:
                 type: string
+              summaryFormat:
+                description: |-
+                  SummaryFormat tells consumers how to interpret Summary: "markdown"
+                  (default) or "json" (a structured block document). Always set on a
+                  produced summary; empty on older Runs (treat as markdown).
+                enum:
+                - markdown
+                - json
+                type: string
               warning:
                 description: |-
                   Warning is set when the summary could not be produced (LLM down, no
