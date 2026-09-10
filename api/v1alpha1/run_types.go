@@ -68,6 +68,12 @@ type RunStatus struct {
 	Warning string `json:"warning,omitempty"`
 	// ModelConfig records which ModelConfig produced the summary.
 	ModelConfig string `json:"modelConfig,omitempty"`
+	// SummaryFormat tells consumers how to interpret Summary: "markdown"
+	// (default) or "json" (a structured block document). Always set on a
+	// produced summary; empty on older Runs (treat as markdown).
+	// +optional
+	// +kubebuilder:validation:Enum=markdown;json
+	SummaryFormat string `json:"summaryFormat,omitempty"`
 }
 
 // +kubebuilder:object:root=true

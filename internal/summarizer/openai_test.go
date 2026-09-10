@@ -27,7 +27,7 @@ func TestOpenAIClientSummarize(t *testing.T) {
 		BaseURL: srv.URL, Model: "qwen3", APIKey: "sk-test",
 		MaxTokens: 100, Temperature: 0, HTTPClient: srv.Client(),
 	}
-	out, err := c.Complete(context.Background(), "system prompt", "user evidence")
+	out, err := c.Complete(context.Background(), "system prompt", "user evidence", false)
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestOpenAIClientNoAPIKeyOmitsAuth(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &OpenAIClient{BaseURL: srv.URL, Model: "llama", HTTPClient: srv.Client()}
-	if _, err := c.Complete(context.Background(), "s", "u"); err != nil {
+	if _, err := c.Complete(context.Background(), "s", "u", false); err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 	if gotAuth != "" {
@@ -66,7 +66,32 @@ func TestOpenAIClientHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := &OpenAIClient{BaseURL: srv.URL, Model: "x", HTTPClient: srv.Client()}
-	if _, err := c.Complete(context.Background(), "s", "u"); err == nil {
+	if _, err := c.Complete(context.Background(), "s", "u", false); err == nil {
 		t.Fatal("expected error on non-200")
+	}
+}
+
+func TestOpenAIResponseFormat(t *testing.T) {
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer srv.Close()
+	c := &OpenAIClient{BaseURL: srv.URL, Model: "m"}
+
+	if _, err := c.Complete(context.Background(), "s", "u", true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotBody, `"response_format":{"type":"json_object"}`) {
+		t.Errorf("jsonMode: expected response_format, got %s", gotBody)
+	}
+
+	if _, err := c.Complete(context.Background(), "s", "u", false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(gotBody, "response_format") {
+		t.Errorf("markdown mode: response_format must be absent, got %s", gotBody)
 	}
 }

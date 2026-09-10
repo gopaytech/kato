@@ -50,3 +50,21 @@ func TestMethodMaxConcurrent(t *testing.T) {
 		}
 	})
 }
+
+func TestSummaryFormat(t *testing.T) {
+	cases := map[string]string{
+		"":         "markdown", // unset -> default
+		"markdown": "markdown",
+		"json":     "json",
+		"JSON":     "json",     // case-insensitive
+		"yaml":     "markdown", // unrecognized -> default
+	}
+	for in, want := range cases {
+		t.Run(in, func(t *testing.T) {
+			t.Setenv("KATO_SUMMARY_FORMAT", in)
+			if got := Load().SummaryFormat; got != want {
+				t.Errorf("SummaryFormat = %q, want %q", got, want)
+			}
+		})
+	}
+}

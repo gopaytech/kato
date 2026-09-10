@@ -145,6 +145,26 @@ func TestExecuteSummarizerDownIsWarningNotFailure(t *testing.T) {
 	}
 }
 
+func TestExecuteThreadsSummaryFormatAndWarning(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	withFmt := func(_ context.Context, _ *v1alpha1.UseCase, _ []StepResult) (SummaryOutput, error) {
+		return SummaryOutput{Summary: "s", Format: "json", Warning: "downgraded"}, nil
+	}
+	uc := &v1alpha1.UseCase{Spec: v1alpha1.UseCaseSpec{
+		Summary: v1alpha1.SummarySpec{Prompt: "x"},
+	}}
+	res, err := newEngine(client, withFmt).Execute(context.Background(), uc, nil)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if res.SummaryFormat != "json" {
+		t.Errorf("SummaryFormat = %q, want json", res.SummaryFormat)
+	}
+	if res.Warning != "downgraded" {
+		t.Errorf("Warning = %q, want downgraded", res.Warning)
+	}
+}
+
 func TestExecuteInputValidation(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	e := newEngine(client, okSummarizer("s"))

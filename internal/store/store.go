@@ -86,15 +86,16 @@ func BuildRunStatus(res engine.Result, startedAt, completedAt time.Time) (v1alph
 	started := metav1.NewTime(startedAt)
 	completed := metav1.NewTime(completedAt)
 	return v1alpha1.RunStatus{
-		Phase:       res.Phase,
-		StartedAt:   &started,
-		CompletedAt: &completed,
-		Steps:       steps,
-		Summary:     res.Summary,
-		Healthy:     res.Healthy,
-		Headline:    res.Headline,
-		Warning:     res.Warning,
-		ModelConfig: res.ModelConfig,
+		Phase:         res.Phase,
+		StartedAt:     &started,
+		CompletedAt:   &completed,
+		Steps:         steps,
+		Summary:       res.Summary,
+		Healthy:       res.Healthy,
+		Headline:      res.Headline,
+		Warning:       res.Warning,
+		ModelConfig:   res.ModelConfig,
+		SummaryFormat: res.SummaryFormat,
 	}, nil
 }
 

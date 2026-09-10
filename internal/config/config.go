@@ -6,6 +6,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -31,6 +32,9 @@ type Config struct {
 	LLMTimeout time.Duration
 	// MaxEvidenceBytes caps the assembled evidence sent to the LLM (0 = no cap).
 	MaxEvidenceBytes int
+	// SummaryFormat selects the LLM summary output format: "markdown" (default)
+	// or "json". Unrecognized/empty values fall back to "markdown".
+	SummaryFormat string
 }
 
 func Load() Config {
@@ -47,6 +51,7 @@ func Load() Config {
 		RunMaxDuration:          getDuration("KATO_RUN_MAX_DURATION", time.Hour),
 		LLMTimeout:              getDuration("KATO_LLM_TIMEOUT", 120*time.Second),
 		MaxEvidenceBytes:        getInt("KATO_MAX_EVIDENCE_BYTES", 0),
+		SummaryFormat:           getSummaryFormat("KATO_SUMMARY_FORMAT", "markdown"),
 	}
 }
 
@@ -73,4 +78,17 @@ func getInt(k string, def int) int {
 		}
 	}
 	return def
+}
+
+// getSummaryFormat normalizes KATO_SUMMARY_FORMAT to "markdown" or "json",
+// case-insensitively; any other value (including empty) yields the default.
+func getSummaryFormat(k, def string) string {
+	switch strings.ToLower(os.Getenv(k)) {
+	case "markdown":
+		return "markdown"
+	case "json":
+		return "json"
+	default:
+		return def
+	}
 }

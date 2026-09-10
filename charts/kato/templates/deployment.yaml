@@ -50,6 +50,8 @@ spec:
               value: {{ .Values.config.runReconcileConcurrency | quote }}
             - name: KATO_RUN_MAX_DURATION
               value: {{ .Values.config.runMaxDuration | quote }}
+            - name: KATO_SUMMARY_FORMAT
+              value: {{ .Values.config.summaryFormat | quote }}
           readinessProbe:
             httpGet: { path: /readyz, port: {{ .Values.service.port }} }
           livenessProbe:

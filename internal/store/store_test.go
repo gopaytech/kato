@@ -152,6 +152,19 @@ func TestSaveRunPersistsIterations(t *testing.T) {
 	}
 }
 
+func TestSaveRunPersistsSummaryFormat(t *testing.T) {
+	c := newFakeClient(t)
+	s := &Store{Client: c, Namespace: "kato"}
+	res := engine.Result{Phase: "Succeeded", Summary: "{}", SummaryFormat: "json"}
+	run, err := s.SaveRun(context.Background(), "uc", nil, res, time.Now(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status.SummaryFormat != "json" {
+		t.Errorf("SummaryFormat = %q, want json", run.Status.SummaryFormat)
+	}
+}
+
 func TestGCDeletesExpiredRuns(t *testing.T) {
 	now := time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC)
 	old := &v1alpha1.Run{ObjectMeta: metav1.ObjectMeta{
