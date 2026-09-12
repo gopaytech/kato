@@ -1,0 +1,156 @@
+# Check whether the k3s control plane and its node are healthy — a COMBINED
+# cluster+node health check for a k3s server node.
+#
+# k3s is architecturally different from kubeadm: the API server, scheduler,
+# controller-manager, kube-proxy, and the flannel CNI all run IN-PROCESS inside
+# the single `k3s server` binary. There are NO static control-plane pods
+# (kube-apiserver-*, etcd-*, kube-scheduler-*, kube-controller-manager-*) to
+# inspect, and no kube-proxy/CNI pods — their absence as pods is normal, not a
+# fault. So instead of static-pod checks this UseCase asserts:
+#   - the API server (and, via healthz, the datastore: embedded etcd on HA, or
+#     SQLite on a single server),
+#   - the k3s server NODE itself (readiness/pressure — on Raspberry Pi / SD-card
+#     nodes, DiskPressure and MemoryPressure are the usual failure modes), and
+#   - the inspectable k3s add-on Deployments in kube-system: coredns (cluster
+#     DNS — cascades if down), metrics-server (kubectl top / HPA), and
+#     local-path-provisioner (the default local-path StorageClass).
+#
+# (traefik / servicelb are only present when not installed with
+# `--disable traefik,servicelb`; add steps for them if your cluster runs them.)
+#
+# Run it against a k3s server (control-plane) node:
+#
+#   curl -s -X POST localhost:8080/api/v1/usecases/control-plane-health-k3s/run \
+#     -d '{"inputs":{"node":"zufar-pi-05"}}' | jq
+#
+#   kubectl apply -f - <<'EOF'
+#   apiVersion: kato.zufardhiyaulhaq.com/v1alpha1
+#   kind: Run
+#   metadata: { name: k3s-cp-check, namespace: infrastructure }
+#   spec:
+#     useCase: control-plane-health-k3s
+#     inputs: { node: zufar-pi-05 }
+#   EOF
+#
+apiVersion: kato.zufardhiyaulhaq.com/v1alpha1
+kind: UseCase
+metadata:
+  name: control-plane-health-k3s
+spec:
+  description: "Check k3s control-plane health: API server (+ datastore), the server node, and the coredns/metrics-server/local-path-provisioner add-ons"
+  inputs:
+    - name: node
+      required: true
+      description: "k3s server (control-plane) node name"
+  steps:
+    # --- API server (read through kato's authenticated REST client) ---
+    # summaryFilter left unset so the failedChecks list (names of failing checks)
+    # reaches the LLM. livez = liveness of the API server process itself.
+    - name: apiserver-livez
+      method: check_apiserver
+      with:
+        endpoint: livez
+        timeout: 5s
+
+    # healthz is the broader set: on k3s this is where the DATASTORE surfaces
+    # (embedded etcd on an HA server, or SQLite on a single server). A healthz-only
+    # failure points at the datastore rather than the API server process.
+    - name: apiserver-healthz
+      method: check_apiserver
+      with:
+        endpoint: healthz
+        timeout: 5s
+
+    # --- The k3s server node ---
+    - name: node-status
+      method: check_node_status
+      with:
+        name: $(inputs.node)
+
+    - name: node-describe
+      method: describe_node
+      with:
+        name: $(inputs.node)
+      summaryFilter: [conditions, taints, unschedulable, allocatableCPU, allocatableMemory, capacityPods, kubeletVersion]
+
+    # Node-scoped events (default namespace): NodeNotReady, memory/disk/PID
+    # pressure, eviction, kubelet registration or containerd problems.
+    - name: node-events
+      method: check_events
+      with:
+        namespace: default
+        involvedObject: $(inputs.node)
+        limit: "10"
+        maxLineLength: "200"
+      summaryFilter: [events, warningCount]
+
+    # --- k3s add-on: coredns (cluster DNS) ---
+    # The most critical add-on: if DNS is down, service discovery fails cluster-wide.
+    # Check rollout health, then (only if pods are actually failing) drill into logs.
+    - name: coredns-status
+      method: check_deployment_status
+      with:
+        namespace: kube-system
+        name: coredns
+
+    - name: coredns-failing
+      method: list_failing_pods
+      with:
+        namespace: kube-system
+        kind: Deployment
+        name: coredns
+        includeNotReady: "true"
+
+    - name: coredns-logs
+      forEach: $(steps.coredns-failing.pods)
+      maxItems: 2
+      when: $(steps.coredns-failing.anyFailing)
+      method: check_pod_logs
+      with:
+        namespace: $(item.namespace)
+        name: $(item.name)
+        tailLines: "15"
+        maxLineLength: "200"
+      summaryFilter: [logs]
+
+    # --- k3s add-on: metrics-server (kubectl top, HPA) ---
+    - name: metrics-server-status
+      method: check_deployment_status
+      with:
+        namespace: kube-system
+        name: metrics-server
+
+    # --- k3s add-on: local-path-provisioner (default local-path StorageClass) ---
+    - name: local-path-provisioner-status
+      method: check_deployment_status
+      with:
+        namespace: kube-system
+        name: local-path-provisioner
+  summary:
+    prompt: |
+      Assess the health of the k3s control plane and its server node $(inputs.node);
+      if everything is healthy, say so plainly. This is k3s, so do NOT look for static
+      control-plane pods or a kube-proxy/CNI pod — the API server, scheduler,
+      controller-manager, kube-proxy, and flannel run in-process in the k3s binary and
+      have no pods; their absence is expected.
+
+      API server: treat apiserver-livez and apiserver-healthz as the source of truth —
+      a failing livez means the API server itself is unhealthy, while a healthz-only
+      failure points at the datastore (embedded etcd or SQLite) or a poststarthook; list
+      the failing check NAMES (failedChecks) verbatim and say which layer they implicate.
+
+      Node: from node-status/node-describe/node-events, flag NotReady (with the Ready
+      reason), memory/disk/PID pressure, cordoned (unschedulable), taints, exhausted
+      allocatable capacity, or warning events. On Raspberry Pi / SD-card nodes,
+      DiskPressure and MemoryPressure are the most common causes — call them out
+      specifically.
+
+      Add-ons: for coredns, metrics-server, and local-path-provisioner, compare
+      readyReplicas vs desiredReplicas and the available/progressing conditions; a
+      progressingReason like ProgressDeadlineExceeded, or ready<desired, means the
+      add-on is degraded. coredns is the most severe — if coredns-failing shows failing
+      pods, use coredns-logs to name the crash cause (CrashLoopBackOff/OOMKilled/config
+      error) and explain that cluster DNS is impacted. metrics-server down breaks
+      `kubectl top` and HPAs; local-path-provisioner down breaks provisioning of
+      local-path PVCs. Give the most likely root cause with the specific evidence and a
+      concrete fix.
